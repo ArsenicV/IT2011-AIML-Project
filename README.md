@@ -1,1 +1,1 @@
-# IT2011-AIML-Project
+# DRiST - Diabetics Risk Screening Tool
