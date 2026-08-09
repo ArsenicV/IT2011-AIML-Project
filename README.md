@@ -1,8 +1,8 @@
 # DRiST - Diabetics Risk Screening Tool
 
 #### Project Pipeline
-![[Drist-Pipeline.png]]
+[project pipeline](Drist-pipeline.png)
 
 ----
 
-![[Drist-Pipeline-svg.svg]]
+[project pipeline in SVG](Drist-pipeline-svg.svg)
