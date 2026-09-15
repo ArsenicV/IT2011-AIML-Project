@@ -10,7 +10,6 @@
 
 #### How to run 
 
-----
 
 #### Project Pipeline
 ![project pipeline](Drist-Pipeline.png)
