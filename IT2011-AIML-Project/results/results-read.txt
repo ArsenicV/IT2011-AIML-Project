@@ -1,4 +1,0 @@
-eda_visualizations -----> plots and chars in png/jpg format
-logs -----> execution logs
-outputs -----> final procesed dataset
-
