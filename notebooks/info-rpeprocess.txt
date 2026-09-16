@@ -1,1 +1,9 @@
 pre member, dataset preprocessing pipeline (notebook)
+
+
+01. outliers, null values, train test split, removing labeled data, correlation matrix -----> Chandira 
+02. initial correlational matrix, pca -------> salman
+03. categorical vs numerical split + chi square + re correlation ---> mn
+04. feature dropping, re correlation --------> kasundi
+05. numerical & categorical data encoding ---> gayashi
+06. undersampling, xport  -------------------> mithsuka
