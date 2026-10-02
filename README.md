@@ -16,6 +16,8 @@ A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGB
 ## Project overview
 DRiST is a diabetes risk screening tool built on the idea that early warning shouldn't require a scheduled checkup. Using common, self-reportable health indicators - blood pressure, BMI, activity levels, general health - it predicts whether someone is likely diabetic and estimates their probability of risk. It's tuned to flag generously rather than miss someone who's actually at risk: a screening aid meant to prompt a conversation with a doctor, not replace one. 
 
+<br>
+
 ## Repo structure 
 
 ```
@@ -43,10 +45,13 @@ DRiST is a diabetes risk screening tool built on the idea that early warning sho
 ![project pipeline](Drist-Pipeline.png)
 
 ----
+<br>
 
 ## How to run 
 
-##### Run Locally
+<br>
+
+### Run Locally
 
 Clone the project repo first. then run,
 ```sh
@@ -81,7 +86,7 @@ brew install libomp
 
 <br>
 
-##### Host in a browser
+### Host in a browser
 
 ```sh
 python serve.py --port 8080
@@ -89,7 +94,7 @@ python serve.py --port 8080
 
 <br>
 
-##### Run the fully CLI version
+### Run the fully CLI version
 
 ```sh
 python cli/app.py
@@ -98,7 +103,7 @@ Open localhost:8080 from your browser, and keep terminal running.
 
 <br>
 
-##### Install offline voice input
+### Install offline voice input
 
 To enable STT/TTS features, run these commands in order *from the project root*. The voice setup script installs the optional audio/speech packages and the local model; `requirements-voice.txt` also includes `requirements.txt`.
 
@@ -108,21 +113,24 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 bash scripts/setup-voice.sh
 ```
+<br>
 
-
-##### How to use the voice feature with cli
-"Glad you asked about that :)"
+### How to use the voice feature with cli
 
 The setup script installs the optional microphone package , text-to-speech package, installs whisper.cpp with Homebrew on macOS if needed, and downloads the Whisper `base.en` model. Once setup completes, start the CLI with `python cli/app.py`.
 
+```
 Text commands related to voice feature:
 `voice` - for a single voice entry
 `auto` - to enable continuous hands-free voice mode
 
 Voice commands related to voice feature:
 `manual` & `stop` - return to typing (use this before prediction)
+```
 
 To change voice, change microphone, and other features, see [Additional information]
+
+<br>
 
 ## Assigned Dataset
 
