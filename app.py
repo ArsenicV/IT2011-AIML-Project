@@ -23,9 +23,9 @@ DATA_PATH = (
     / "raw"
     / "diabetes_binary_health_indicators_BRFSS2015.csv"
 )
-MODEL_PATH = Path(__file__).resolve().parent / "ft_transformer_best.pt"
-LOGREG_MODEL_PATH = Path(__file__).resolve().parent / "logreg (1).pt"
-XGBOOST_MODEL_PATH = Path(__file__).resolve().parent / "xgboost_diabetes_model.joblib"
+MODEL_PATH = Path(__file__).resolve().parent / "weights" / "ft_transformer_best.pt"
+LOGREG_MODEL_PATH = Path(__file__).resolve().parent / "weights" / "logreg (1).pt"
+XGBOOST_MODEL_PATH = Path(__file__).resolve().parent / "weights" / "xgboost_diabetes_model.joblib"
 XGBOOST_RUNNER_PATH = Path(__file__).resolve().parent / "xgboost_inference.py"
 
 FEATURES = [
