@@ -182,7 +182,7 @@ export DRIST_TTS_VOICE=Zarvox     # robotic novelty voice
 python cli/app.py
 ```
 
-**Note!**
+> **Note!**
 Matching is case-insensitive and substring-based, so `daniel` and `Dan` both select **Daniel**. Other TTS controls:
 
 | Variable | Default | Effect |
