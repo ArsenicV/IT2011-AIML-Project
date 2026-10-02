@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import curses
+import importlib
+import math
+import os
 import random
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
+import wave
+from array import array
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from rich import box
 from rich.console import Console
@@ -19,6 +28,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import app as model_app
 
 console = Console(force_terminal=True, color_system="truecolor")
+WHISPER_MODEL_PATH = Path(
+    os.environ.get(
+        "DRIST_WHISPER_MODEL",
+        str(PROJECT_ROOT / "models" / "ggml-base.en.bin"),
+    )
+)
+AUDIO_DEVICE = os.environ.get("DRIST_AUDIO_DEVICE")
+WHISPER_CLI = os.environ.get("DRIST_WHISPER_CLI", "whisper-cli")
 
 CHOICE_FEATURES = {
     "HighBP": model_app.BINARY_OPTIONS,
@@ -60,6 +77,338 @@ MODEL_CHOICES = {
     "x": model_app.XGBOOST_MODEL_NAME,
     "xgboost": model_app.XGBOOST_MODEL_NAME,
 }
+NUMBER_WORDS = {
+    "zero": 0, "oh": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90,
+}
+
+
+class VoiceInputError(RuntimeError):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Lightweight TTS via pyttsx3 (offline, uses macOS "say" under the hood)
+# Set DRIST_TTS=0  to disable entirely.
+# Set DRIST_TTS_VOICE to a voice name (or substring) e.g. "Daniel", "Samantha",
+#   "Zarvox", "Rishi" — matched case-insensitively against the system voice list.
+#   Run `python cli/app.py --list-voices` to see all available voices.
+# Set DRIST_TTS_RATE to override words-per-minute (default 175).
+# Falls back silently if pyttsx3 is not installed.
+# ---------------------------------------------------------------------------
+TTS_ENABLED: bool = os.environ.get("DRIST_TTS", "1").strip() not in {"0", "false", "off", "no"}
+TTS_VOICE: str = os.environ.get("DRIST_TTS_VOICE", "").strip()
+TTS_RATE: int = int(os.environ.get("DRIST_TTS_RATE", "175"))
+_tts_engine: Any = None  # lazily initialised
+
+
+def _get_tts_engine() -> Any | None:
+    """Return a cached pyttsx3 engine, or None if unavailable / disabled."""
+    global _tts_engine
+    if not TTS_ENABLED:
+        return None
+    if _tts_engine is not None:
+        return _tts_engine
+    try:
+        pyttsx3 = importlib.import_module("pyttsx3")
+        engine = pyttsx3.init()
+        engine.setProperty("rate", TTS_RATE)
+        engine.setProperty("volume", 0.9)
+        if TTS_VOICE:
+            voices = engine.getProperty("voices")
+            needle = TTS_VOICE.lower()
+            match = next(
+                (v for v in voices if needle in v.name.lower() or needle in v.id.lower()),
+                None,
+            )
+            if match:
+                engine.setProperty("voice", match.id)
+            else:
+                console.print(
+                    f"[yellow]TTS: voice {TTS_VOICE!r} not found — using default. "
+                    "Run with --list-voices to see all options.[/]"
+                )
+        _tts_engine = engine
+        return _tts_engine
+    except Exception:
+        return None
+
+
+def list_voices() -> None:
+    """Print all available TTS voices to the console and exit."""
+    try:
+        pyttsx3 = importlib.import_module("pyttsx3")
+    except ImportError:
+        console.print("[red]pyttsx3 is not installed. Run: pip install pyttsx3[/]")
+        raise SystemExit(1)
+    engine = pyttsx3.init()
+    voices = engine.getProperty("voices")
+    table = Table(
+        title="Available TTS voices  (set with DRIST_TTS_VOICE)",
+        box=box.SIMPLE,
+        show_header=True,
+        header_style="bold bright_magenta",
+    )
+    table.add_column("Name", style="bold bright_cyan")
+    table.add_column("Language(s)", style="white")
+    table.add_column("Gender", style="dim")
+    for v in voices:
+        langs = ", ".join(str(l) for l in v.languages) if v.languages else "—"
+        gender = str(v.gender).replace("VoiceGender", "") if v.gender else "—"
+        table.add_row(v.name, langs, gender)
+    console.print(table)
+
+
+def speak(text: str) -> None:
+    """Speak *text* aloud using pyttsx3 (or native 'say' on mac). Never raises."""
+    if not TTS_ENABLED:
+        return
+        
+    if sys.platform == "darwin":
+        # Native 'say' blocks perfectly on macOS; pyttsx3 runAndWait can return early.
+        cmd = ["say"]
+        if TTS_VOICE:
+            cmd.extend(["-v", TTS_VOICE])
+        cmd.extend(["-r", str(TTS_RATE), text])
+        try:
+            subprocess.run(cmd, check=False)
+            time.sleep(0.4)
+        except Exception:
+            pass
+        return
+
+    engine = _get_tts_engine()
+    if engine is None:
+        return
+    try:
+        engine.say(text)
+        engine.runAndWait()
+        time.sleep(0.4)
+    except Exception:
+        pass
+
+
+def transcribe_voice() -> str:
+    try:
+        sd = importlib.import_module("sounddevice")
+    except ImportError as error:
+        raise VoiceInputError(
+            "Offline voice packages are missing. Install them with "
+            "'pip install -r requirements-voice.txt'."
+        ) from error
+
+    whisper_executable = shutil.which(WHISPER_CLI)
+    if not whisper_executable:
+        raise VoiceInputError(
+            f"Cannot find {WHISPER_CLI!r}. Run 'bash scripts/setup-voice.sh' "
+            "or set DRIST_WHISPER_CLI to the whisper-cli executable."
+        )
+    if not WHISPER_MODEL_PATH.is_file():
+        raise VoiceInputError(
+            f"Whisper model not found at {WHISPER_MODEL_PATH}. "
+            "Run 'bash scripts/setup-voice.sh' or set DRIST_WHISPER_MODEL."
+        )
+
+    try:
+        silence_seconds = 0.0
+        heard_speech = False
+        started_at = time.monotonic()
+        audio_chunks: list[bytes] = []
+        with console.status(
+            "[bold #A855F7]● Listening locally[/] [dim]Speak one value; pause to finish[/]",
+            spinner="point",
+        ):
+            stream_options: dict[str, Any] = {
+                "samplerate": 16000,
+                "blocksize": 3200,
+                "channels": 1,
+                "dtype": "int16",
+            }
+            if AUDIO_DEVICE:
+                stream_options["device"] = (
+                    int(AUDIO_DEVICE) if AUDIO_DEVICE.isdigit() else AUDIO_DEVICE
+                )
+            with sd.InputStream(
+                **stream_options,
+            ) as audio_stream:
+                # Flush the first 0.5 seconds of audio to clear any TTS echo
+                audio_stream.read(8000)
+                started_at = time.monotonic()
+                while time.monotonic() - started_at < 5:
+                    audio_data, _ = audio_stream.read(3200)
+                    samples = array("h", audio_data.tobytes())
+                    audio_chunks.append(samples.tobytes())
+                    rms = math.sqrt(sum(sample * sample for sample in samples) / max(1, len(samples)))
+                    if rms >= 450:
+                        heard_speech = True
+                        silence_seconds = 0.0
+                    elif heard_speech:
+                        silence_seconds += len(samples) / 16000
+                    if heard_speech and silence_seconds >= 0.45:
+                        break
+
+        if not heard_speech:
+            console.print("[yellow]No speech detected. You can try again or type a value.[/]")
+            return ""
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
+            audio_path = Path(audio_file.name)
+        try:
+            with wave.open(str(audio_path), "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(16000)
+                wav_file.writeframes(b"".join(audio_chunks))
+            with console.status("[bold bright_cyan]Transcribing locally...[/]", spinner="dots"):
+                result = subprocess.run(
+                    [
+                        whisper_executable,
+                        "-m", str(WHISPER_MODEL_PATH),
+                        "-f", str(audio_path),
+                        "-l", "en",
+                        "-t", "2",
+                        "-nt",
+                        "-np",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                    check=False,
+                )
+            if result.returncode != 0:
+                details = result.stderr.strip() or result.stdout.strip()
+                raise VoiceInputError(f"whisper.cpp transcription failed: {details}")
+            transcript = re.sub(r"^\[[\d:.>\s\u2013-]+\]\s*", "", result.stdout.strip()).strip()
+        finally:
+            audio_path.unlink(missing_ok=True)
+
+        if not transcript:
+            console.print("[yellow]No speech detected. You can try again or type a value.[/]")
+        return transcript
+    except VoiceInputError:
+        raise
+    except Exception as error:
+        raise VoiceInputError(f"Microphone or speech recognition error: {error}") from error
+
+
+AUTO_VOICE: bool = False
+
+def prompt_value(prompt: str, input_fn: Callable[[str], str], spoken_prompt: str = "") -> str:
+    global AUTO_VOICE
+    first_iteration = True
+    while True:
+        if AUTO_VOICE:
+            if first_iteration and spoken_prompt:
+                console.print(f"{prompt} ", end="")
+                speak(spoken_prompt)
+                console.print("[dim](listening... say 'manual' to type instead)[/]")
+            else:
+                console.print(f"{prompt} [dim](listening... say 'manual' to type instead)[/]")
+            first_iteration = False
+            try:
+                transcript = transcribe_voice()
+            except VoiceInputError as error:
+                console.print(f"[bold red]{error}[/]")
+                AUTO_VOICE = False
+                continue
+
+            if not transcript:
+                AUTO_VOICE = False
+                continue
+
+            if transcript.lower().strip() in {"stop", "manual", "text", "type"}:
+                console.print("[yellow]Switched to manual typing mode.[/]")
+                speak("Switched to manual typing")
+                AUTO_VOICE = False
+                continue
+
+            console.print(Panel.fit(
+                f"[bold white]{transcript}[/] [dim](validated automatically)[/]",
+                title="[bold bright_cyan]Heard locally[/]",
+                border_style="bright_cyan",
+            ))
+            speak(f"I heard: {transcript}")
+            return transcript
+
+        console.print(f"{prompt} [dim](or type 'voice' or 'auto')[/] ", end="")
+        raw_value = input_fn("").strip()
+        
+        if raw_value.lower() in {"voice auto", "auto"}:
+            AUTO_VOICE = True
+            speak("Auto voice mode enabled")
+            continue
+            
+        if raw_value.lower() != "voice":
+            return raw_value
+            
+        try:
+            transcript = transcribe_voice()
+        except VoiceInputError as error:
+            console.print(f"[bold red]{error}[/]")
+            continue
+        if not transcript:
+            continue
+        console.print(Panel.fit(
+            f"[bold white]{transcript}[/] [dim](validated automatically)[/]",
+            title="[bold bright_cyan]Heard locally[/]",
+            border_style="bright_cyan",
+        ))
+        speak(f"I heard: {transcript}")
+        return transcript
+
+
+def parse_spoken_number(text: str) -> float | None:
+    cleaned = text.lower().replace("-", " ").replace(",", " ")
+    try:
+        return float(cleaned)
+    except ValueError:
+        pass
+
+    tokens = re.findall(r"[a-z]+|\d+|\.", cleaned)
+    if not tokens:
+        return None
+    if "point" in tokens or "." in tokens:
+        point_index = tokens.index("point") if "point" in tokens else tokens.index(".")
+        integer = _parse_spoken_integer(tokens[:point_index])
+        fractional = tokens[point_index + 1:]
+        digit_values = [
+            NUMBER_WORDS[token] if token in NUMBER_WORDS and NUMBER_WORDS[token] < 10
+            else int(token) if token.isdigit() and len(token) == 1
+            else None
+            for token in fractional
+        ]
+        if integer is None or not digit_values or any(value is None for value in digit_values):
+            return None
+        decimal_digits = "".join(str(value) for value in digit_values)
+        return float(f"{integer}.{decimal_digits}")
+    return _parse_spoken_integer(tokens)
+
+
+def _parse_spoken_integer(tokens: list[str]) -> int | None:
+    current = 0
+    found = False
+    for token in tokens:
+        if token in {"and", "option", "number", "choice", "choose", "select", "a"}:
+            continue
+        if token.isdigit():
+            current += int(token)
+            found = True
+        elif token in NUMBER_WORDS:
+            current += NUMBER_WORDS[token]
+            found = True
+        elif token == "hundred" and found:
+            current = max(1, current) * 100
+        else:
+            if found:
+                break
+            else:
+                continue
+    return current if found else None
 
 
 class SnakeGame:
@@ -219,14 +568,18 @@ def read_numeric(
     input_fn: Callable[[str], str] = input,
 ) -> float:
     minimum, maximum = NUMERIC_LIMITS[name]
+    spoken = f"{label}. Enter a value from {minimum:g} to {maximum:g}."
     while True:
-        console.print(f"[bold bright_cyan]{label}[/] [dim]({minimum:g}-{maximum:g})[/] ", end="")
-        raw_value = input_fn("").strip()
-        try:
-            value = float(raw_value)
-        except ValueError:
+        raw_value = prompt_value(
+            f"[bold bright_cyan]{label}[/] [dim]({minimum:g}-{maximum:g})[/]",
+            input_fn,
+            spoken_prompt=spoken,
+        )
+        parsed_number = parse_spoken_number(raw_value)
+        if parsed_number is None:
             console.print("[red]Enter a number.[/]")
             continue
+        value = parsed_number
         if minimum <= value <= maximum:
             return value
         console.print(f"[red]Enter a value from {minimum:g} to {maximum:g}.[/]")
@@ -246,21 +599,66 @@ def read_categorical(
     console.print(table)
 
     valid_values = {int(value) for _, value in options}
+    if name in BINARY_FEATURES:
+        spoken = f"{label}. Say yes or no."
+    else:
+        option_labels = [opt[0] for opt in options]
+        if len(option_labels) > 4:
+            spoken = f"{label}. Please say the option number from the screen."
+        else:
+            spoken = f"{label}. Say 1 for {option_labels[0]}, 2 for {option_labels[1]}, or say the option number."
+
     while True:
         hint = "yes/no or 0/1" if name in BINARY_FEATURES else "/".join(map(str, sorted(valid_values)))
-        console.print(f"[bold bright_magenta]Choose[/] [dim]({hint})[/] ", end="")
-        raw_value = input_fn("").strip().lower()
+        raw_value = prompt_value(
+            f"[bold bright_magenta]Choose[/] [dim]({hint})[/]",
+            input_fn,
+            spoken_prompt=spoken,
+        ).strip().lower()
         if name in BINARY_FEATURES:
-            binary_aliases = {"no": 0, "n": 0, "yes": 1, "y": 1}
-            if raw_value in binary_aliases:
-                return binary_aliases[raw_value]
-        try:
-            selected = int(raw_value)
-        except ValueError:
-            console.print(f"[red]Enter one of: {', '.join(str(value) for value in sorted(valid_values))}.[/]")
-            continue
+            binary_aliases = {
+                "no": 0, "n": 0, "nope": 0, "zero": 0, "0": 0,
+                "yes": 1, "y": 1, "yeah": 1, "yep": 1, "one": 1, "1": 1
+            }
+            # Tokenize to avoid substring bugs (e.g. "n" in "one")
+            tokens = set(re.sub(r"[^a-z0-9]", " ", raw_value).split())
+            for alias, val in binary_aliases.items():
+                if alias in tokens:
+                    return val
+                    
+        def normalize_for_match(text: str) -> str:
+            words = text.lower().replace("-", " ").replace("+", " plus ").replace("/", " ").split()
+            norm = []
+            for w in words:
+                w_clean = re.sub(r"[^a-z0-9]", "", w)
+                if w_clean in NUMBER_WORDS:
+                    norm.append(str(NUMBER_WORDS[w_clean]))
+                elif w_clean:
+                    norm.append(w_clean)
+            joined = " ".join(norm)
+            joined = re.sub(r"\b(to|or|and|plus|a|the|of|for|through)\b", " ", joined)
+            joined = re.sub(r"s\b", "", joined)  # simple plural removal
+            return re.sub(r"\s+", " ", joined).strip()
+
+        norm_input = normalize_for_match(raw_value)
+        
+        # 1. Fuzzy match against the full label text
+        matched_value = None
+        for option_label, option_value in options:
+            norm_label = normalize_for_match(option_label)
+            if norm_label in norm_input or (len(norm_input) > 2 and norm_input in norm_label):
+                matched_value = int(option_value)
+                break
+        
+        if matched_value is not None:
+            return matched_value
+            
+        # 2. Fallback: Check if they just said the option number (e.g., "Option 3")
+        parsed_number = parse_spoken_number(raw_value)
+        selected = int(parsed_number) if parsed_number is not None and parsed_number.is_integer() else None
         if selected in valid_values:
             return selected
+            
         console.print(f"[red]Enter one of: {', '.join(str(value) for value in sorted(valid_values))}.[/]")
 
 
@@ -287,6 +685,75 @@ def collect_features(input_fn: Callable[[str], str] = input) -> dict[str, int | 
     return values
 
 
+def review_features(
+    values: dict[str, int | float],
+    input_fn: Callable[[str], str] = input,
+) -> dict[str, int | float] | None:
+    feature_definitions = model_app.FIELD_DEFINITIONS
+    while True:
+        table = Table(
+            title="Review patient inputs",
+            box=box.ROUNDED,
+            title_style="bold bright_magenta",
+            border_style="bright_magenta",
+        )
+        table.add_column("#", style="bold bright_cyan", justify="right")
+        table.add_column("Feature", style="white")
+        table.add_column("Entered value", style="bold")
+        for index, (name, label) in enumerate(feature_definitions, start=1):
+            value = values[name]
+            if name in CHOICE_FEATURES:
+                value = next(
+                    (option_label for option_label, option_value in CHOICE_FEATURES[name]
+                     if int(option_value) == int(value)),
+                    value,
+                )
+            table.add_row(str(index), label, str(value))
+        console.print(table)
+        controls = Text()
+        controls.append("[Enter]", style="bold bright_magenta")
+        controls.append(" predict  ")
+        controls.append("[E]", style="bold bright_cyan")
+        controls.append(" edit a value  ")
+        controls.append("[Q]", style="bold red")
+        controls.append(" cancel")
+        console.print(controls)
+        command = input_fn("").strip().lower()
+        if command in {"", "p", "predict", "run"}:
+            return values
+        if command in {"q", "quit", "cancel"}:
+            return None
+        if command not in {"e", "edit"}:
+            console.print("[red]Choose Enter, E, or Q.[/]")
+            continue
+
+        console.print("[bright_cyan]Enter the feature number or name to edit:[/] ", end="")
+        selection = input_fn("").strip().lower()
+        selected_index: int | None = None
+        if selection.isdigit():
+            index = int(selection)
+            if 1 <= index <= len(feature_definitions):
+                selected_index = index - 1
+        else:
+            selected_index = next(
+                (
+                    index
+                    for index, (name, label) in enumerate(feature_definitions)
+                    if selection in {name.lower(), label.lower()}
+                ),
+                None,
+            )
+        if selected_index is None:
+            console.print("[red]No matching feature. Use its number or full name.[/]")
+            continue
+
+        name, label = feature_definitions[selected_index]
+        if name in NUMERIC_LIMITS:
+            values[name] = read_numeric(name, label, input_fn)
+        else:
+            values[name] = read_categorical(name, label, input_fn)
+
+
 def run() -> int:
     banner = Text(
         " ____   ____    _   ____   _____\n"
@@ -307,6 +774,10 @@ def run() -> int:
         return 1
 
     values = collect_features()
+    values = review_features(values)
+    if values is None:
+        console.print("[yellow]Prediction cancelled. No result was generated.[/]")
+        return 0
     try:
         prediction, probability = model_app.predict_diabetes(fitted_model, values)
     except Exception as error:
@@ -322,10 +793,17 @@ def run() -> int:
     result.add_row("Output", f"[{result_style}]{prediction} ({class_label})[/]")
     result.add_row("Class 1 probability", f"[bold]{probability:.1%}[/]")
     console.print(Panel(result, title="[bold bright_magenta]Prediction[/]", border_style="bright_magenta"))
+    speak(
+        f"Prediction complete. The model classifies this patient as the {class_label}, "
+        f"with a diabetes probability of {probability:.0%}."
+    )
     return 0
 
 
 if __name__ == "__main__":
+    if "--list-voices" in sys.argv:
+        list_voices()
+        raise SystemExit(0)
     try:
         raise SystemExit(run())
     except (EOFError, KeyboardInterrupt):
