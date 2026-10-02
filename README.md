@@ -7,9 +7,6 @@
 
 
 
-A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGBoost, and Baseline Logistic Regression Model. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. 
-
----
 
 <br>
 
