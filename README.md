@@ -3,11 +3,12 @@
         | | | || |_) | | | \\___ \\   | |
         | |_| ||  _ <  | |  ___) |  | |
         |____/ |_| \\_\\ |_| |____/   |_|
-        "Diabetes Risk Prediction Tool",
+        Diabetes Risk Prediction Tool
 
-A minimal Textual app for entering the 15 features retained by `IT2011_proj.ipynb`. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. Each option loads its supplied local model artifact; none is trained at app startup.
+A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGBoost, and Baseline Logistic Regression Model. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. 
 
-## Run locally
+## How to run?
+#### Run Locally
 
 ```sh
 python -m venv .venv
@@ -16,7 +17,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-## Run the fully CLI version
+#### Run the fully CLI version
 
 ```sh
 python cli/app.py
