@@ -144,7 +144,7 @@ To change voice, change microphone, and other features, see [Additional informat
 
 ## Additional information
 
-Additional information related to voice:
+Additional information related to voice feature:
 - To use another microphone, list devices with `python -c "import sounddevice as sd; print(sd.query_devices())"`, then set its device index or name before launching:
 
 ```sh
