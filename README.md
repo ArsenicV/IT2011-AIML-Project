@@ -52,7 +52,7 @@ From the project root, run these commands in order. The voice setup script insta
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-voice.txt
 bash scripts/setup-voice.sh
 ```
 
