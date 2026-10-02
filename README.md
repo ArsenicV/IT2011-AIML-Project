@@ -18,22 +18,22 @@ DRiST is a diabetes risk screening tool built on the idea that early warning sho
 ## Repo structure 
 
 ```
-|- cli ----> contains the command line version of the application
+|- cli - contains the command line version of the application
 |
 |- data
-|   |- raw ----> raw dataset 
+|   |- raw - raw dataset 
 |
-|- notebooks ----> data preprocessing pipeline
+|- notebooks - data preprocessing pipeline
 |
 |- results
-|   |- eda visualizations ----> plots generated from data preprocessing pipeline
-|   |- outputs ----> preprocessed dataset
+|   |- eda visualizations - plots generated from data preprocessing pipeline
+|   |- outputs - preprocessed dataset
 |
-|- scripts ----> scripts needed to install in order to get STT/TTS functionality
+|- scripts - scripts needed to install in order to get STT/TTS functionality
 |
-|- weights ----> trained models by group members
+|- weights - trained models by group members
 |
-|- plots ----> model evaluation plots
+|- plots - model evaluation plots
 
 
 ```
