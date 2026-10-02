@@ -1,4 +1,9 @@
-# DRiST TUI
+         ____   ____    _   ____   _____
+        |  _ \\ |  _ \\  (_) / ___| |_   _|
+        | | | || |_) | | | \\___ \\   | |
+        | |_| ||  _ <  | |  ___) |  | |
+        |____/ |_| \\_\\ |_| |____/   |_|
+        "Diabetes Risk Prediction Tool",
 
 A minimal Textual app for entering the 15 features retained by `IT2011_proj.ipynb`. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. Each option loads its supplied local model artifact; none is trained at app startup.
 
