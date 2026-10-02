@@ -138,13 +138,25 @@ To change voice, change microphone, and other features, see [Additional informat
 
 ## Plots (performance matrices & eval)
 
+<br>
 
 ## Team members & roles
 
+| Student ID| Name | Contribution |
+|---|---|---|
+| ITxxxx | Ihsan Salman | contribution |
+| ITxxxx | Chandira Anupama | contribution |
+| ITxxx | Thirshe Perera | Feature selection using chi square, FT-transformer training, TUI, CLI application & voice agent |
+ITxxx | Kasundi Pathirana | contribution |
+ITxxxx | Gayashi Perera | contribution |
+ITxxxx | Mithsuka Nugaliyadda | contribution |
+
+<br>
 
 ## Additional information
 
 Additional information related to voice feature:
+
 - To use another microphone, list devices with `python -c "import sounddevice as sd; print(sd.query_devices())"`, then set its device index or name before launching:
 
 ```sh
@@ -155,6 +167,7 @@ python cli/app.py
 - To use another whisper.cpp model, set `DRIST_WHISPER_MODEL` to its local model file; to use a differently named executable, set `DRIST_WHISPER_CLI`. Without the optional executable or model, normal typed input continues to work.
 
 - To change the voice (Text To Speech)
+
 List all voices available on your system:
 
 ```sh
@@ -171,6 +184,7 @@ python cli/app.py
 ```
 
 **Note!**
+
 Matching is case-insensitive and substring-based, so `daniel` and `Dan` both select **Daniel**. Other TTS controls:
 
 | Variable | Default | Effect |
@@ -187,6 +201,7 @@ DRIST_TTS_VOICE=Zarvox DRIST_TTS_RATE=130 python cli/app.py
 
 
 Used packages for this project:
+
 sounddevice, pyttsx3, whisper.cpp, base.en
 
 
