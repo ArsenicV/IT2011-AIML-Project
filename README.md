@@ -74,6 +74,7 @@ Run the Textual app by using:
 ```sh
 python app.py
 ```
+<br>
 
 > Note: If you're uisng MacOS, make sure to install the OpenMP runtime once if you plan to use XGBoost:
 ```sh
