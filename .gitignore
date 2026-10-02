@@ -1,1 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Large Model weights (downloaded via script)
 /models/
+
+# macOS system files
+.DS_Store
+**/.DS_Store

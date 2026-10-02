@@ -8,7 +8,7 @@ from typing import Any
 import joblib
 import pandas as pd
 
-MODEL_PATH = Path(__file__).resolve().parent / "xgboost_diabetes_model.joblib"
+MODEL_PATH = Path(__file__).resolve().parent / "weights" / "xgboost_diabetes_model.joblib"
 
 
 def main() -> None:
