@@ -46,7 +46,6 @@ DRiST is a diabetes risk screening tool built on the idea that early warning sho
 
 ## How to run 
 
-<br>
 
 ### Run Locally
 
@@ -184,7 +183,6 @@ python cli/app.py
 ```
 
 **Note!**
-
 Matching is case-insensitive and substring-based, so `daniel` and `Dan` both select **Daniel**. Other TTS controls:
 
 | Variable | Default | Effect |
@@ -199,6 +197,7 @@ Example — slow Zarvox robot voice:
 DRIST_TTS_VOICE=Zarvox DRIST_TTS_RATE=130 python cli/app.py
 ```
 
+<br>
 
 Used packages for this project:
 
