@@ -6,7 +6,6 @@
         Diabetes Risk Prediction Tool
 
 
-## Install the base app
 
 A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGBoost, and Baseline Logistic Regression Model. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. 
 
@@ -14,10 +13,10 @@ A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGB
 
 <br>
 
-#### Project overview
+## Project overview
 DRiST is a diabetes risk screening tool built on the idea that early warning shouldn't require a scheduled checkup. Using common, self-reportable health indicators - blood pressure, BMI, activity levels, general health - it predicts whether someone is likely diabetic and estimates their probability of risk. It's tuned to flag generously rather than miss someone who's actually at risk: a screening aid meant to prompt a conversation with a doctor, not replace one. 
 
-#### Repo structure 
+## Repo structure 
 
 ```
 |- cli ----> contains the command line version of the application
@@ -40,12 +39,12 @@ DRiST is a diabetes risk screening tool built on the idea that early warning sho
 
 ```
 
-#### Project Pipeline
+## Project Pipeline
 ![project pipeline](Drist-Pipeline.png)
 
 ----
 
-#### How to run 
+## How to run 
 
 ##### Run Locally
 
@@ -125,19 +124,19 @@ Voice commands related to voice feature:
 
 To change voice, change microphone, and other features, see [Additional information]
 
-#### Assigned Dataset
+## Assigned Dataset
 
 
-#### Model selection (justification w charts)
+## Model selection (justification w charts)
 
 
-#### Plots (performance matrices & eval)
+## Plots (performance matrices & eval)
 
 
-#### Team members & roles
+## Team members & roles
 
 
-#### Additional information
+## Additional information
 
 Additional information related to voice:
 - To use another microphone, list devices with `python -c "import sounddevice as sd; print(sd.query_devices())"`, then set its device index or name before launching:
