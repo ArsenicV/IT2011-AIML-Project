@@ -10,75 +10,151 @@
 
 A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGBoost, and Baseline Logistic Regression Model. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. 
 
-## How to run?
-#### Run Locally
+---
 
+<br>
+
+#### Project overview
+DRiST is a diabetes risk screening tool built on the idea that early warning shouldn't require a scheduled checkup. Using common, self-reportable health indicators - blood pressure, BMI, activity levels, general health - it predicts whether someone is likely diabetic and estimates their probability of risk. It's tuned to flag generously rather than miss someone who's actually at risk: a screening aid meant to prompt a conversation with a doctor, not replace one. 
+
+#### Repo structure 
+
+```
+|- cli ----> contains the command line version of the application
+|
+|- data
+|   |- raw ----> raw dataset 
+|
+|- notebooks ----> data preprocessing pipeline
+|
+|- results
+|   |- eda visualizations ----> plots generated from data preprocessing pipeline
+|   |- outputs ----> preprocessed dataset
+|
+|- scripts ----> scripts needed to install in order to get STT/TTS functionality
+|
+|- weights ----> trained models by group members
+|
+|- plots ----> model evaluation plots
+
+
+```
+
+#### Project Pipeline
+![project pipeline](Drist-Pipeline.png)
+
+----
+
+#### How to run 
+
+##### Run Locally
+
+Clone the project repo first. then run,
+```sh
+cd IT2011-AIML-Project
+
+```
+Then activate the virtual environment using:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+
 ```
 
-On macOS, install the OpenMP runtime once if you plan to use XGBoost:
+Then run
 
 ```sh
-brew install libomp
+python -m pip install -r requirements.txt
+
 ```
 
-## Run the Textual app
+Run the Textual app by using:
 
 ```sh
 python app.py
 ```
 
+> Note: If you're uisng MacOS, make sure to install the OpenMP runtime once if you plan to use XGBoost:
+```sh
+brew install libomp
+```
 
-## Run the terminal CLI
-#### Run the fully CLI version
+<br>
 
+##### Host in a browser
+
+```sh
+python serve.py --port 8080
+```
+
+<br>
+
+##### Run the fully CLI version
 
 ```sh
 python cli/app.py
 ```
+Open localhost:8080 from your browser, and keep terminal running.
 
-The CLI displays the purple ASCII DRiST title, prompts for `T`, `L`, or `X`, loads that local model artifact, then guides you through the patient features. It validates entries and shows the prediction in a colored summary.
+<br>
 
-At the model prompt, enter `snake` for the hidden Snake game. Move with WASD or the arrow keys; press `Q` to return to model selection.
+##### Install offline voice input
 
-## Install offline voice input
-
-From the project root, run these commands in order. The voice setup script installs the optional audio/speech packages and the local model; `requirements-voice.txt` also includes `requirements.txt`.
+To enable STT/TTS features, run these commands in order *from the project root*. The voice setup script installs the optional audio/speech packages and the local model; `requirements-voice.txt` also includes `requirements.txt`.
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-voice.txt
+python -m pip install -r requirements.txt
 bash scripts/setup-voice.sh
 ```
 
-The setup script installs the optional microphone package (`sounddevice`), text-to-speech package (`pyttsx3`), installs whisper.cpp with Homebrew on macOS if needed, and downloads the Whisper `base.en` model (about 142 MB). If a download is interrupted, rerun the script to resume it. It uses `.venv` if it exists; otherwise it uses the available system Python. Once setup completes, start the CLI with `python cli/app.py`.
 
-At any feature prompt, type `voice` and press Enter for a single voice entry, or type `auto` to enable continuous hands-free voice mode. The CLI records from the operating system's default microphone, stops after about 0.45 seconds of silence (or 5 seconds maximum), then transcribes locally with whisper.cpp. It accepts the transcript without per-field confirmation, while numeric ranges and categorical options are still validated. If you are in auto mode and want to return to typing, just say "manual" or "stop". Before prediction, review the full input table: press Enter to continue, `E` to edit a feature, or `Q` to cancel. The temporary WAV is deleted after transcription. On macOS, allow microphone access for the terminal app running Python.
+##### How to use the voice feature with cli
+"Glad you asked about that :)"
 
-To use another microphone, list devices with `python -c "import sounddevice as sd; print(sd.query_devices())"`, then set its device index or name before launching:
+The setup script installs the optional microphone package , text-to-speech package, installs whisper.cpp with Homebrew on macOS if needed, and downloads the Whisper `base.en` model. Once setup completes, start the CLI with `python cli/app.py`.
+
+Text commands related to voice feature:
+`voice` - for a single voice entry
+`auto` - to enable continuous hands-free voice mode
+
+Voice commands related to voice feature:
+`manual` & `stop` - return to typing (use this before prediction)
+
+To change voice, change microphone, and other features, see [Additional information]
+
+#### Assigned Dataset
+
+
+#### Model selection (justification w charts)
+
+
+#### Plots (performance matrices & eval)
+
+
+#### Team members & roles
+
+
+#### Additional information
+
+Additional information related to voice:
+- To use another microphone, list devices with `python -c "import sounddevice as sd; print(sd.query_devices())"`, then set its device index or name before launching:
 
 ```sh
 export DRIST_AUDIO_DEVICE=2
 python cli/app.py
 ```
 
-Speech-to-text does not change or synthesize the speaker's voice; it recognizes whoever speaks into the selected microphone. The default model is Whisper `base.en`. To use another whisper.cpp model, set `DRIST_WHISPER_MODEL` to its local model file; to use a differently named executable, set `DRIST_WHISPER_CLI`. Without the optional executable or model, normal typed input continues to work. Downloaded model binaries are ignored by Git.
+- To use another whisper.cpp model, set `DRIST_WHISPER_MODEL` to its local model file; to use a differently named executable, set `DRIST_WHISPER_CLI`. Without the optional executable or model, normal typed input continues to work.
 
-## Text-to-speech (TTS)
-
-The CLI reads back transcribed voice input and speaks the final prediction result aloud using `pyttsx3`, which uses the operating system's native speech engine (macOS `say`) — fully offline, no network needed.
-
+- To change the voice (Text To Speech)
 List all voices available on your system:
 
 ```sh
 python cli/app.py --list-voices
 ```
-
 Pick a voice by setting its name (or any substring of it) before launching:
 
 ```sh
@@ -89,6 +165,7 @@ export DRIST_TTS_VOICE=Zarvox     # robotic novelty voice
 python cli/app.py
 ```
 
+**Note!**
 Matching is case-insensitive and substring-based, so `daniel` and `Dan` both select **Daniel**. Other TTS controls:
 
 | Variable | Default | Effect |
@@ -104,45 +181,44 @@ DRIST_TTS_VOICE=Zarvox DRIST_TTS_RATE=130 python cli/app.py
 ```
 
 
-## Host in a browser
-
-```sh
-python serve.py --port 8080
-```
-
-Open `http://localhost:8080` and leave the server terminal running. Stop it with Ctrl+C. Use `python serve.py --port 8000` to host on port 8000 instead. The app loads `ft_transformer_best.pt`, `logreg (1).pt`, or `xgboost_diabetes_model.joblib` from the `weights/` directory. It fits the matching notebook scaler/encoder on the training split from `data/raw/diabetes_binary_health_indicators_BRFSS2015.csv`, then applies it to the entered patient row. The Logistic Regression artifact expects 19 features (first category dropped); Transformer and XGBoost expect 28. XGBoost loading and inference run in a helper process to avoid a macOS OpenMP conflict with PyTorch.
-
-The Transformer checkpoint stores weights without model configuration. Its tensor shapes identify a six-layer, width-64 transformer with a 256-wide feed-forward layer and a 32-unit head. The attention head count is not stored; this app assumes four heads. The Logistic Regression artifact was saved under scikit-learn 1.6.1; the app reports the version mismatch if run with a different scikit-learn version.
-
-This is a project scaffold, not a validated clinical tool. The models are loaded from local artifacts supplied with the project.
-
-# 
-
-<br>
-
-#### Project overview
+Used packages for this project:
+sounddevice, pyttsx3, whisper.cpp, base.en
 
 
-#### Repo structure 
 
 
-#### How to run 
 
 
-#### Project Pipeline
-![project pipeline](Drist-Pipeline.png)
-
-----
-
-#### Assigned Dataset
 
 
-#### Model selection (justification w charts)
 
 
-#### plots (performance matrices & eval)
 
 
-#### Team members & roles
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
