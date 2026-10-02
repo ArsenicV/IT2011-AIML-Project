@@ -34,7 +34,6 @@ python app.py
 
 
 ## Run the terminal CLI
-=======
 #### Run the fully CLI version
 
 
