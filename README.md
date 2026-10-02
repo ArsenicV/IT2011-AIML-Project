@@ -88,6 +88,7 @@ brew install libomp
 ```sh
 python serve.py --port 8080
 ```
+Open localhost:8080 from your browser, and keep terminal running.
 
 <br>
 
@@ -96,7 +97,7 @@ python serve.py --port 8080
 ```sh
 python cli/app.py
 ```
-Open localhost:8080 from your browser, and keep terminal running.
+
 
 <br>
 
