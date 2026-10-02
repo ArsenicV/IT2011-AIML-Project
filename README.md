@@ -1,6 +1,18 @@
-# DRiST TUI
+         ____   ____    _   ____   _____
+        |  _ \\ |  _ \\  (_) / ___| |_   _|
+        | | | || |_) | | | \\___ \\   | |
+        | |_| ||  _ <  | |  ___) |  | |
+        |____/ |_| \\_\\ |_| |____/   |_|
+        Diabetes Risk Prediction Tool
+
 
 ## Install the base app
+
+A minimal Textual app for diabetes screening. Consist of FT-Tansformer mode, XGBoost, and Baseline Logistic Regression Model. At the model prompt, enter `T` for the FT-Transformer, `L` for Logistic Regression, or `X` for XGBoost, then enter patient details. 
+
+## How to run?
+#### Run Locally
+
 
 ```sh
 python3 -m venv .venv
@@ -20,7 +32,11 @@ brew install libomp
 python app.py
 ```
 
+
 ## Run the terminal CLI
+=======
+#### Run the fully CLI version
+
 
 ```sh
 python cli/app.py
@@ -105,9 +121,29 @@ This is a project scaffold, not a validated clinical tool. The models are loaded
 
 <br>
 
+#### Project overview
+
+
+#### Repo structure 
+
+
+#### How to run 
+
+
 #### Project Pipeline
 ![project pipeline](Drist-Pipeline.png)
 
 ----
 
 #### Assigned Dataset
+
+
+#### Model selection (justification w charts)
+
+
+#### plots (performance matrices & eval)
+
+
+#### Team members & roles
+
+
