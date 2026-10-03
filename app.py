@@ -5,9 +5,12 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Any
+import torch as torch
 
 import pandas as pd
-import torch
+import numpy as np
+import joblib
+import shap
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -440,10 +443,63 @@ class DiabetesApp(App[None]):
             self.query_one("#status", Static).update(f"Check the inputs: {error}")
             return
 
-        class_label = "higher-risk class" if prediction == 1 else "lower-risk class"
-        self.query_one("#status", Static).update(
-            f"Model output: {prediction} ({class_label}) | Class 1 probability: {probability:.1%}"
-        )
+        # Determine user-friendly class label
+        class_label = "DIABETES" if prediction == 1 else "NON-DIABETES"
+        # Prepare a concise result string
+        result_str = f"Result: {class_label} (probability: {probability:.1%})"
+        # Optionally compute top SHAP feature contributions
+        try:
+            preprocessor, model = self._model  # type: ignore[misc]
+            row_df = pd.DataFrame([[values[name] for name in FEATURES]], columns=FEATURES)
+            x_transformed = preprocessor.transform(row_df)
+            encoder = preprocessor.named_transformers_["cat"]
+            all_feature_names = NUMERICAL_FEATURES + list(
+                encoder.get_feature_names_out(CATEGORICAL_FEATURES)
+            )
+            if isinstance(model, XGBoostArtifact):
+                # Run SHAP via the XGBoost subprocess helper
+                result_shap = run_xgboost(
+                    {
+                        "action": "shap",
+                        "feature_names": model.feature_names,
+                        "features": x_transformed[0].tolist(),
+                    }
+                )
+                sv = result_shap.get("shap_values", [])
+                if sv:
+                    top_idxs = sorted(range(len(sv)), key=lambda i: abs(sv[i]), reverse=True)[:3]
+                    top_parts = [
+                        f"{all_feature_names[i]}: {sv[i]:+.3f}"
+                        for i in top_idxs
+                        if i < len(all_feature_names)
+                    ]
+                    if top_parts:
+                        result_str += " | Top factors: " + ", ".join(top_parts)
+            elif isinstance(model, FTTransformer):
+                tensor = torch.as_tensor(x_transformed, dtype=torch.float32)
+                # Use a zero baseline as background for GradientExplainer
+                background = torch.zeros_like(tensor)
+                explainer = shap.GradientExplainer(model, background)
+                sv_raw = explainer.shap_values(tensor)
+                # sv_raw shape: [n_outputs, n_samples, n_features] or [n_samples, n_features]
+                if isinstance(sv_raw, list):
+                    sv = sv_raw[0][0]
+                else:
+                    sv = sv_raw[0]
+                sv_list = sv.tolist() if hasattr(sv, "tolist") else list(sv)
+                top_idxs = sorted(range(len(sv_list)), key=lambda i: abs(sv_list[i]), reverse=True)[:3]
+                top_parts = [
+                    f"{all_feature_names[i]}: {sv_list[i]:+.3f}"
+                    for i in top_idxs
+                    if i < len(all_feature_names)
+                ]
+                if top_parts:
+                    result_str += " | Top factors: " + ", ".join(top_parts)
+        except Exception:
+            # SHAP unavailable or any runtime error — silently skip
+            pass
+        self.query_one("#status", Static).update(result_str)
+
 
     def _read_form(self) -> dict[str, int | float]:
         values: dict[str, int | float] = {}

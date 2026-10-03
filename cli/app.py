@@ -15,10 +15,12 @@ import wave
 from array import array
 from pathlib import Path
 from typing import Any, Callable
+import pandas as pd
 
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.text import Text
 
@@ -26,6 +28,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import app as model_app
+
+# Alias the feature list so the batch block can reference it directly
+FEATURES = model_app.FEATURES
 
 console = Console(force_terminal=True, color_system="truecolor")
 WHISPER_MODEL_PATH = Path(
@@ -37,6 +42,7 @@ WHISPER_MODEL_PATH = Path(
 AUDIO_DEVICE = os.environ.get("DRIST_AUDIO_DEVICE")
 WHISPER_CLI = os.environ.get("DRIST_WHISPER_CLI", "whisper-cli")
 
+## features // for preprocessing
 CHOICE_FEATURES = {
     "HighBP": model_app.BINARY_OPTIONS,
     "HighChol": model_app.BINARY_OPTIONS,
@@ -66,6 +72,8 @@ BINARY_FEATURES = {
     "HvyAlcoholConsump",
     "DiffWalk",
 }
+
+# stuff we can intut at model selection
 MODEL_CHOICES = {
     "t": model_app.FT_MODEL_NAME,
     "transformer": model_app.FT_MODEL_NAME,
@@ -92,7 +100,8 @@ class VoiceInputError(RuntimeError):
     pass
 
 
-# ---------------------------------------------------------------------------
+### TTS Engine
+
 # Lightweight TTS via pyttsx3 (offline, uses macOS "say" under the hood)
 # Set DRIST_TTS=0  to disable entirely.
 # Set DRIST_TTS_VOICE to a voice name (or substring) e.g. "Daniel", "Samantha",
@@ -100,7 +109,7 @@ class VoiceInputError(RuntimeError):
 #   Run `python cli/app.py --list-voices` to see all available voices.
 # Set DRIST_TTS_RATE to override words-per-minute (default 175).
 # Falls back silently if pyttsx3 is not installed.
-# ---------------------------------------------------------------------------
+
 TTS_ENABLED: bool = os.environ.get("DRIST_TTS", "1").strip() not in {"0", "false", "off", "no"}
 TTS_VOICE: str = os.environ.get("DRIST_TTS_VOICE", "").strip()
 TTS_RATE: int = int(os.environ.get("DRIST_TTS_RATE", "175"))
@@ -411,8 +420,9 @@ def _parse_spoken_integer(tokens: list[str]) -> int | None:
     return current if found else None
 
 
+## easter egg --> snake 
 class SnakeGame:
-    def __init__(self, width: int = 24, height: int = 12) -> None:
+    def __init__(self, width: int = 44, height: int = 42) -> None:
         self.width = width
         self.height = height
         center = (width // 2, height // 2)
@@ -766,6 +776,19 @@ def run() -> int:
     )
     console.print(Panel(banner, box=box.DOUBLE, border_style="#A855F7", padding=(1, 2)))
     model_name = choose_model()
+
+    # ---- batch mode prompt -------------------------------------------------
+    batch_input = console.input("[bold]Batch mode? (y/N): [/]").strip().lower()
+    is_batch = batch_input == "y" or batch_input == "yes"
+    batch_path: Path | None = None
+    if is_batch:
+        path_str = console.input("Enter CSV file path for batch processing: ").strip()
+        batch_path = Path(path_str)
+        if not batch_path.is_file():
+            console.print(f"[red]File not found: {batch_path}[/]")
+            return 1
+    # -----------------------------------------------------------------------
+
     try:
         with console.status(f"[bold bright_cyan]Loading saved {model_name} model...[/]", spinner="dots"):
             fitted_model = model_app.load_model(model_name)
@@ -773,6 +796,41 @@ def run() -> int:
         console.print(f"[bold red]Could not load model:[/] {type(error).__name__}: {error}", file=sys.stderr)
         return 1
 
+    if is_batch and batch_path:
+        # Load CSV, drop rows with missing required features, predict each row
+        df = pd.read_csv(batch_path)
+        # Ensure required columns exist
+        missing = set(FEATURES) - set(df.columns)
+        if missing:
+            console.print(f"[red]CSV missing required columns: {', '.join(missing)}[/]")
+            return 1
+        # Keep only needed columns and drop rows with any NaN in those columns
+        df_clean = df[FEATURES].dropna()
+        if df_clean.empty:
+            console.print("[yellow]No complete rows found after dropping missing values. Nothing to predict.[/]")
+            return 0
+        results: list[dict[str, Any]] = []
+        progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            TimeElapsedColumn(),
+            transient=True,
+        )
+        with progress:
+            task = progress.add_task("Predicting", total=len(df_clean))
+            for _, row in df_clean.iterrows():
+                values = {name: row[name] for name in FEATURES}
+                pred, prob = model_app.predict_diabetes(fitted_model, values)
+                results.append({**row.to_dict(), "prediction": pred, "probability": prob})
+                progress.update(task, advance=1)
+        # Export results to project root directory
+        out_path = Path.cwd() / f"batch_predictions_{model_name.replace(' ', '_').lower()}.csv"
+        pd.DataFrame(results).to_csv(out_path, index=False)
+        console.print(f"[green]Batch predictions saved to {out_path}[/]")
+        return 0
+
+    # ---- single‑patient interactive flow ------------------------------------
     values = collect_features()
     values = review_features(values)
     if values is None:
@@ -784,20 +842,21 @@ def run() -> int:
         console.print(f"[bold red]Prediction failed:[/] {type(error).__name__}: {error}", file=sys.stderr)
         return 1
 
-    class_label = "higher-risk class" if prediction == 1 else "lower-risk class"
+    class_label = "DIABETES" if prediction == 1 else "NON-DIABETES"
     result_style = "bold red" if prediction == 1 else "bold green"
     result = Table(box=box.ROUNDED, show_header=False, border_style="bright_magenta")
     result.add_column("Item", style="dim")
     result.add_column("Result")
     result.add_row("Model", model_name)
-    result.add_row("Output", f"[{result_style}]{prediction} ({class_label})[/]")
-    result.add_row("Class 1 probability", f"[bold]{probability:.1%}[/]")
+    result.add_row("Prediction", f"[{result_style}]{class_label}[/]")
+    result.add_row("Diabetes probability", f"[bold]{probability:.1%}[/]")
     console.print(Panel(result, title="[bold bright_magenta]Prediction[/]", border_style="bright_magenta"))
     speak(
-        f"Prediction complete. The model classifies this patient as the {class_label}, "
+        f"Prediction complete. Result: {class_label}, "
         f"with a diabetes probability of {probability:.0%}."
     )
     return 0
+
 
 
 if __name__ == "__main__":
@@ -807,5 +866,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(run())
     except (EOFError, KeyboardInterrupt):
-        print("\nCancelled.")
+        print("\nCancelled. Byee!")
         raise SystemExit(130)
