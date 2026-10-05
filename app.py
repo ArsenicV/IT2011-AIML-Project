@@ -5,9 +5,12 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Any
+import torch as torch
 
 import pandas as pd
-import torch
+import numpy as np
+import joblib
+import shap
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -142,7 +145,7 @@ class FTTransformer(torch.nn.Module):
         tokens = features.unsqueeze(-1) * self.feature_weight + self.feature_bias
         cls_token = self.cls_token.expand(features.shape[0], -1, -1)
         encoded = self.encoder(torch.cat((cls_token, tokens), dim=1))
-        return self.head(self.norm(encoded[:, 0])).squeeze(-1)
+        return self.head(self.norm(encoded[:, 0]))
 
 
 class XGBoostArtifact:
@@ -258,7 +261,7 @@ def predict_diabetes(
     if isinstance(model, FTTransformer):
         tensor = torch.as_tensor(transformed_row, dtype=torch.float32)
         with torch.inference_mode():
-            probability = float(torch.sigmoid(model(tensor))[0].item())
+            probability = float(torch.sigmoid(model(tensor)).view(-1)[0].item())
         return int(probability >= 0.5), probability
 
     if hasattr(model, "feature_names_in_"):
@@ -270,6 +273,82 @@ def predict_diabetes(
     prediction = int(model.predict(transformed_row)[0])
     probability = float(model.predict_proba(transformed_row)[0][list(model.classes_).index(1)])
     return prediction, probability
+
+
+def explain_prediction(
+    fitted: tuple[ColumnTransformer, Any],
+    values: dict[str, int | float],
+    top_k: int = 3,
+) -> list[tuple[str, float]]:
+    preprocessor, model = fitted
+    row_df = pd.DataFrame([[values[name] for name in FEATURES]], columns=FEATURES)
+    x_transformed = preprocessor.transform(row_df)
+    encoder = preprocessor.named_transformers_["cat"]
+    all_feature_names = NUMERICAL_FEATURES + list(
+        encoder.get_feature_names_out(CATEGORICAL_FEATURES)
+    )
+
+    if isinstance(model, XGBoostArtifact):
+        result_shap = run_xgboost(
+            {
+                "action": "shap",
+                "feature_names": model.feature_names,
+                "features": x_transformed[0].tolist(),
+            }
+        )
+        sv = result_shap.get("shap_values", [])
+    elif isinstance(model, FTTransformer):
+        tensor = torch.as_tensor(x_transformed, dtype=torch.float32)
+        background = torch.zeros((1, tensor.shape[1]), dtype=torch.float32)
+        explainer = shap.GradientExplainer(model, background)
+        sv_raw = explainer.shap_values(tensor)
+        sv = np.asarray(sv_raw).ravel().tolist()
+    elif hasattr(model, "coef_"):
+        coef = np.asarray(model.coef_).ravel()
+        sv = (x_transformed[0] * coef).tolist()
+    else:
+        return []
+
+    if not sv or len(sv) != len(all_feature_names):
+        return []
+
+    top_idxs = sorted(range(len(sv)), key=lambda i: abs(sv[i]), reverse=True)[:top_k]
+    return [(all_feature_names[i], float(sv[i])) for i in top_idxs]
+
+
+FEATURE_FRIENDLY_NAMES: dict[str, str] = {
+    "HighBP_1.0": "High blood pressure",
+    "HighBP_0.0": "Normal blood pressure",
+    "HighChol_1.0": "High cholesterol",
+    "HighChol_0.0": "Normal cholesterol",
+    "Smoker_1.0": "Smoking history",
+    "Smoker_0.0": "Non-smoker status",
+    "Stroke_1.0": "History of stroke",
+    "Stroke_0.0": "No stroke history",
+    "HeartDiseaseorAttack_1.0": "Heart disease history",
+    "HeartDiseaseorAttack_0.0": "No heart disease history",
+    "PhysActivity_1.0": "Regular physical activity",
+    "PhysActivity_0.0": "Lack of physical activity",
+    "HvyAlcoholConsump_1.0": "Heavy alcohol consumption",
+    "HvyAlcoholConsump_0.0": "Low/no alcohol consumption",
+    "DiffWalk_1.0": "Difficulty walking",
+    "DiffWalk_0.0": "No difficulty walking",
+    "BMI": "Body Mass Index (BMI)",
+    "GenHlth": "General health rating",
+    "Age": "Age group",
+    "Income": "Income level",
+    "PhysHlth": "Physical health days",
+    "MentHlth": "Mental health days",
+}
+
+
+def humanize_factor(raw_name: str, score: float) -> str:
+    if raw_name.startswith("Education_"):
+        name = "Education level"
+    else:
+        name = FEATURE_FRIENDLY_NAMES.get(raw_name, raw_name)
+    direction = "increases risk" if score > 0 else "lowers risk"
+    return f"{name} ({direction})"
 
 
 class DiabetesApp(App[None]):
@@ -440,10 +519,25 @@ class DiabetesApp(App[None]):
             self.query_one("#status", Static).update(f"Check the inputs: {error}")
             return
 
-        class_label = "higher-risk class" if prediction == 1 else "lower-risk class"
-        self.query_one("#status", Static).update(
-            f"Model output: {prediction} ({class_label}) | Class 1 probability: {probability:.1%}"
-        )
+        # Determine user-friendly styled class label
+        if prediction == 1:
+            class_label = "[bold red]DIABETES[/bold red]"
+        else:
+            class_label = "[bold light_green]NON-DIABETES[/bold light_green]"
+
+        # Prepare a concise result string
+        result_str = f"Result: {class_label} (probability: {probability:.1%})"
+        # Optionally compute top SHAP feature contributions
+        try:
+            top_factors = explain_prediction(self._model, values, top_k=3)
+            if top_factors:
+                top_parts = [humanize_factor(name, score) for name, score in top_factors]
+                result_str += " | Top contributing factors: " + ", ".join(top_parts)
+        except Exception:
+            # SHAP unavailable or any runtime error — silently skip
+            pass
+        self.query_one("#status", Static).update(result_str)
+
 
     def _read_form(self) -> dict[str, int | float]:
         values: dict[str, int | float] = {}

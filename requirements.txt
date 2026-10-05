@@ -1,8 +1,22 @@
-textual>=1.0
-textual-serve>=1.1
-rich>=13.0
+# Core ML / data
+numpy>=1.26
 pandas>=2.0
 scikit-learn>=1.3
 torch>=2.0
 xgboost>=2.0
 joblib>=1.3
+shap>=0.45
+
+# UI
+textual>=1.0
+textual-serve>=1.1
+rich>=13.0
+
+# Visualisation (used by shap plots)
+matplotlib>=3.8
+
+# Optional — TTS (text-to-speech in CLI, falls back silently if absent)
+#pyttsx3>=2.90
+
+# Optional — voice input in CLI (falls back silently if absent)
+#sounddevice>=0.4
