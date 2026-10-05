@@ -543,6 +543,25 @@ def play_snake() -> None:
     curses.wrapper(_play_snake_screen)
 
 
+SPOKEN_QUESTIONS: dict[str, str] = {
+    "HighBP": "Have you ever been told by a doctor that you have high blood pressure? Say yes or no.",
+    "HighChol": "Have you ever had your blood cholesterol checked and been told it was high? Say yes or no.",
+    "BMI": "What is your Body Mass Index, or BMI? For example, twenty five.",
+    "Smoker": "Have you smoked at least 100 cigarettes in your entire life? Say yes or no.",
+    "Stroke": "Have you ever had a stroke? Say yes or no.",
+    "HeartDiseaseorAttack": "Have you ever had coronary heart disease or a heart attack? Say yes or no.",
+    "PhysActivity": "Did you do any physical activity or exercise in the past 30 days? Say yes or no.",
+    "HvyAlcoholConsump": "Do you engage in heavy alcohol consumption? Say yes or no.",
+    "GenHlth": "In general, how would you rate your overall health? Excellent, Very Good, Good, Fair, or Poor?",
+    "MentHlth": "How many days in the past 30 days was your mental health not good? Say a number from 0 to 30.",
+    "PhysHlth": "How many days in the past 30 days was your physical health not good? Say a number from 0 to 30.",
+    "DiffWalk": "Do you have serious difficulty walking or climbing stairs? Say yes or no.",
+    "Age": "What is your age group? For example, 18 to 24, 45 to 49, or say the number from the screen.",
+    "Education": "What is your highest level of education completed? Please choose an option from 1 to 6.",
+    "Income": "What is your annual household income bracket? Please choose an option from 1 to 8.",
+}
+
+
 def choose_model(
     input_fn: Callable[[str], str] = input,
     snake_fn: Callable[[], None] = play_snake,
@@ -550,26 +569,47 @@ def choose_model(
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold bright_magenta")
     table.add_column("Key", style="bold bright_cyan", width=5)
     table.add_column("Model", style="white")
-    table.add_row("T", "FT-Transformer checkpoint")
+    table.add_row("T", "FT-Transformer checkpoint (default)")
     table.add_row("L", "Logistic Regression")
     table.add_row("X", "XGBoost")
     console.print(table)
 
+    spoken_prompt = "Please choose a prediction model. Say Transformer, Logistic Regression, or XGBoost."
+
     while True:
-        console.print("[bold bright_magenta]Model key[/] [dim](or Q to quit):[/] ", end="")
-        command = input_fn("")
-        if command.strip().lower() in {"q", "quit", "exit"}:
+        raw_command = prompt_value(
+            "[bold bright_magenta]Model key[/] [dim](T/L/X, default T, or Q to quit):[/]",
+            input_fn,
+            spoken_prompt=spoken_prompt,
+        ).strip().lower()
+
+        if raw_command in {"", "default", "first", "1", "one"}:
+            model_name = model_app.FT_MODEL_NAME
+            console.print(f"[green]Selected (default):[/] [bold]{model_name}[/]\n")
+            return model_name
+        if raw_command in {"q", "quit", "exit"}:
             raise SystemExit(0)
-        if command.strip().lower() == "snake":
+        if raw_command == "snake":
             snake_fn()
             console.print("\n[bold bright_magenta]Model selection[/]")
             console.print(table)
             continue
-        model_name = MODEL_CHOICES.get(command.strip().lower())
+
+        # Speech and text recognition for model choices
+        tokens = set(re.sub(r"[^a-z0-9]", " ", raw_command).split())
+        if tokens.intersection({"transformer", "ft", "t", "1", "first"}):
+            model_name = model_app.FT_MODEL_NAME
+        elif tokens.intersection({"logistic", "logreg", "regression", "l", "2", "second"}):
+            model_name = model_app.LOGREG_MODEL_NAME
+        elif tokens.intersection({"xgboost", "xgb", "boost", "x", "3", "third"}):
+            model_name = model_app.XGBOOST_MODEL_NAME
+        else:
+            model_name = MODEL_CHOICES.get(raw_command)
+
         if model_name is not None:
             console.print(f"[green]Selected:[/] [bold]{model_name}[/]\n")
             return model_name
-        console.print("[bold red]Enter T, L, or X.[/]")
+        console.print("[bold red]Enter T, L, or X (or say Transformer, Logistic, or XGBoost).[/]")
 
 
 def read_numeric(
@@ -578,7 +618,7 @@ def read_numeric(
     input_fn: Callable[[str], str] = input,
 ) -> float:
     minimum, maximum = NUMERIC_LIMITS[name]
-    spoken = f"{label}. Enter a value from {minimum:g} to {maximum:g}."
+    spoken = SPOKEN_QUESTIONS.get(name, f"{label}. Enter a value from {minimum:g} to {maximum:g}.")
     while True:
         raw_value = prompt_value(
             f"[bold bright_cyan]{label}[/] [dim]({minimum:g}-{maximum:g})[/]",
@@ -609,14 +649,16 @@ def read_categorical(
     console.print(table)
 
     valid_values = {int(value) for _, value in options}
-    if name in BINARY_FEATURES:
-        spoken = f"{label}. Say yes or no."
-    else:
-        option_labels = [opt[0] for opt in options]
-        if len(option_labels) > 4:
-            spoken = f"{label}. Please say the option number from the screen."
+    spoken = SPOKEN_QUESTIONS.get(name)
+    if not spoken:
+        if name in BINARY_FEATURES:
+            spoken = f"Do you have {label.lower()}? Say yes or no."
         else:
-            spoken = f"{label}. Say 1 for {option_labels[0]}, 2 for {option_labels[1]}, or say the option number."
+            option_labels = [opt[0] for opt in options]
+            if len(option_labels) > 4:
+                spoken = f"{label}. Please say the option number from the screen."
+            else:
+                spoken = f"{label}. Say 1 for {option_labels[0]}, 2 for {option_labels[1]}, or say the option number."
 
     while True:
         hint = "yes/no or 0/1" if name in BINARY_FEATURES else "/".join(map(str, sorted(valid_values)))
@@ -728,33 +770,63 @@ def review_features(
         controls.append("[Q]", style="bold red")
         controls.append(" cancel")
         console.print(controls)
-        command = input_fn("").strip().lower()
-        if command in {"", "p", "predict", "run"}:
+
+        spoken_review = (
+            "Please review the entered patient details. "
+            "Say predict to run the prediction, edit to change a value, or cancel."
+        )
+        command = prompt_value(
+            "[bold bright_magenta]Action[/] [dim](Enter to predict, E to edit, Q to cancel):[/]",
+            input_fn,
+            spoken_prompt=spoken_review,
+        ).strip().lower()
+
+        if command in {"", "p", "predict", "run", "yes", "confirm", "proceed", "go", "continue", "okay", "ok"}:
             return values
-        if command in {"q", "quit", "cancel"}:
+        if command in {"q", "quit", "cancel", "stop", "no"}:
             return None
-        if command not in {"e", "edit"}:
-            console.print("[red]Choose Enter, E, or Q.[/]")
+
+        # Check if user said edit, or directly asked to edit a specific feature (e.g. "edit blood pressure")
+        edit_target = ""
+        if "edit" in command or "change" in command:
+            edit_target = re.sub(r"\b(edit|change|update|the)\b", "", command).strip()
+        elif command == "e":
+            edit_target = ""
+        else:
+            console.print("[red]Say predict, edit, or cancel.[/]")
             continue
 
-        console.print("[bright_cyan]Enter the feature number or name to edit:[/] ", end="")
-        selection = input_fn("").strip().lower()
-        selected_index: int | None = None
-        if selection.isdigit():
-            index = int(selection)
-            if 1 <= index <= len(feature_definitions):
-                selected_index = index - 1
+        if not edit_target:
+            spoken_edit = "Which feature would you like to edit? Say the number or feature name."
+            selection = prompt_value(
+                "[bright_cyan]Enter feature number or name to edit:[/] ",
+                input_fn,
+                spoken_prompt=spoken_edit,
+            ).strip().lower()
         else:
+            selection = edit_target
+
+        selected_index: int | None = None
+        parsed_num = parse_spoken_number(selection)
+        if parsed_num is not None and 1 <= int(parsed_num) <= len(feature_definitions):
+            selected_index = int(parsed_num) - 1
+        else:
+            selection_clean = re.sub(r"[^a-z0-9]", "", selection)
             selected_index = next(
                 (
                     index
                     for index, (name, label) in enumerate(feature_definitions)
-                    if selection in {name.lower(), label.lower()}
+                    if selection_clean in re.sub(r"[^a-z0-9]", "", name.lower())
+                    or selection_clean in re.sub(r"[^a-z0-9]", "", label.lower())
+                    or re.sub(r"[^a-z0-9]", "", name.lower()) in selection_clean
+                    or re.sub(r"[^a-z0-9]", "", label.lower()) in selection_clean
                 ),
                 None,
             )
+
         if selected_index is None:
-            console.print("[red]No matching feature. Use its number or full name.[/]")
+            console.print("[red]No matching feature found. Please try again.[/]")
+            speak("No matching feature found.")
             continue
 
         name, label = feature_definitions[selected_index]
@@ -775,11 +847,24 @@ def run() -> int:
         style="bold #A855F7",
     )
     console.print(Panel(banner, box=box.DOUBLE, border_style="#A855F7", padding=(1, 2)))
+
+    global AUTO_VOICE
+    if any(arg in sys.argv for arg in ("--auto", "--voice", "-a", "-v")):
+        AUTO_VOICE = True
+        console.print("[green]Hands-free voice mode enabled via flag.[/]\n")
+        speak("Hands-free voice mode enabled.")
+    elif not AUTO_VOICE and sys.stdin.isatty():
+        voice_input = console.input("[bold]Enable hands-free voice mode? (y/N): [/]").strip().lower()
+        if voice_input in {"y", "yes"}:
+            AUTO_VOICE = True
+            console.print("[green]Hands-free voice mode enabled.[/]\n")
+            speak("Hands-free voice mode enabled.")
+
     model_name = choose_model()
 
     # ---- batch mode prompt -------------------------------------------------
-    batch_input = console.input("[bold]Batch mode? (y/N): [/]").strip().lower()
-    is_batch = batch_input == "y" or batch_input == "yes"
+    batch_input = console.input("[bold]Batch mode? (y/N): [/]").strip().lower() if not AUTO_VOICE else "n"
+    is_batch = batch_input in {"y", "yes"}
     batch_path: Path | None = None
     if is_batch:
         path_str = console.input("Enter CSV file path for batch processing: ").strip()
