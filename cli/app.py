@@ -843,18 +843,27 @@ def run() -> int:
         return 1
 
     class_label = "DIABETES" if prediction == 1 else "NON-DIABETES"
-    result_style = "bold red" if prediction == 1 else "bold green"
+    result_style = "bold red" if prediction == 1 else "bold light_green"
     result = Table(box=box.ROUNDED, show_header=False, border_style="bright_magenta")
     result.add_column("Item", style="dim")
     result.add_column("Result")
     result.add_row("Model", model_name)
     result.add_row("Prediction", f"[{result_style}]{class_label}[/]")
     result.add_row("Diabetes probability", f"[bold]{probability:.1%}[/]")
+    top_factors_list: list[str] = []
+    try:
+        top_factors = model_app.explain_prediction(fitted_model, values, top_k=3)
+        if top_factors:
+            top_factors_list = [model_app.humanize_factor(name, score) for name, score in top_factors]
+            factors_str = "\n".join(f"• {factor}" for factor in top_factors_list)
+            result.add_row("Top contributing factors", factors_str)
+    except Exception:
+        pass
     console.print(Panel(result, title="[bold bright_magenta]Prediction[/]", border_style="bright_magenta"))
-    speak(
-        f"Prediction complete. Result: {class_label}, "
-        f"with a diabetes probability of {probability:.0%}."
-    )
+    speak_text = f"Prediction complete. Result: {class_label}, with a diabetes probability of {probability:.0%}."
+    if top_factors_list:
+        speak_text += f" Main factors: {', '.join(top_factors_list)}."
+    speak(speak_text)
     return 0
 
 
