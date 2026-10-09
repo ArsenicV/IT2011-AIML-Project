@@ -133,10 +133,62 @@ To change voice, change microphone, and other features, see [Additional informat
 ## Assigned Dataset
 
 
+| Property | Value |
+|---|---|
+| Source | CDC BRFSS 2015, Diabetes Health Indicators Dataset (Kaggle) |
+| Records | 253,680, split 80% train / 20% test (stratified, `random_state=42`) |
+| Features | 21 health and lifestyle indicators (binary flags plus ordinal and numeric columns such as BMI, GenHlth and Age) |
+| Target | `Diabetes_binary` (0 = no diabetes, 1 = diabetes or pre-diabetes) |
+| Class balance | About 86% no diabetes / 14% diabetes (test set: 13.9% positive) |
+| Missing values | None |
+
+**Preprocessing:** one-hot encoding, standard scaling of the numeric and ordinal columns, and six weak features dropped after chi-square, mutual-information and correlation checks (21 to 15 features). The training set is balanced by random undersampling (28,277 rows per class, 56,554 in total). 
+
+<br>
+
 ## Model selection (justification w charts)
 
+Six models were trained on the same preporcessed dataset
 
+
+| Model | Why it is included |
+|---|---|
+| Logistic Regression | Linear baseline, easy to explain |
+| KNN | Distance-based, no assumptions about the data |
+| Decision Tree | Interpretable rules |
+| Random Forest | Many trees voting, handles non-linear effects |
+| XGBoost | Boosted trees, a strong classical baseline for tabular data |
+| FT-Transformer | Each feature becomes an embedding token and self-attention learns how features interact; implemented directly in PyTorch (after Gorishniy et al., 2021) |
+
+Because the tool is meant for screening, **recall** (the share of real diabetes cases found) was the main criterion, then F1 and ROC-AUC. The **FT-Transformer** was chosen as the final model: it has the highest recall of the six models (0.803, comparable across test sets) and the highest F1 (0.761) among the models scored on balanced sets, with ROC-AUC tied with XGBoost. **XGBoost** remains the lighter, faster and more interpretable alternative. The differences between the top models are small (under 0.01 on most metrics), so the choice is a preference for catching more cases, not a decisive win
+
+<br>
+
+## Evaluation 
+### Test results
+
+| Model | Test set | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|---|
+| Logistic Regression | Real | 0.731 | 0.310 | 0.761 | 0.441 | 0.817 |
+| Random Forest | Real | 0.716 | 0.301 | 0.784 | 0.435 | 0.818 |
+| KNN | Balanced | 0.745 | 0.722 | 0.798 | 0.758 | 0.819 |
+| Decision Tree | Balanced | 0.731 | 0.716 | 0.765 | 0.740 | 0.805 |
+| XGBoost | Balanced | 0.749 | 0.738 | 0.770 | 0.754 | 0.823 |
+| FT-Transformer | Balanced | 0.748 | 0.724 | 0.803 | 0.761 | 0.823 |
+
+Precision, recall and F1 are for the diabetes class.
+
+![Models compared on ROC-AUC and recall](assets/model_comparison.png)
+
+
+![FT-Transformer tuning progression](assets/ft_tuning_progress.png)
+
+## Ablation
+Trained without preprocessing or balancing, the same model reaches 0.866 accuracy but only about 0.15 recall (ROC-AUC 0.828). Accuracy there mostly reflects the 86% non-diabetic majority, which is why the training set is balanced.
+
+(abl tbl comparison)
 ## Plots (performance matrices & eval)
+
 
 <br>
 
@@ -204,8 +256,23 @@ Used packages for this project:
 
 sounddevice, pyttsx3, whisper.cpp, base.en
 
+<br>
 
+## Limitations
 
+- BRFSS 2015 is a US, self-reported, telephone survey, so it may not match the Sri Lankan population or current health patterns.
+- Models were not all evaluated on the same real-distribution test set. Doing that, with a tuned decision threshold, is the next step.
+- Undersampling discards majority-class records and may remove useful information.
+- No subgroup (age, income, education) or external validation has been done.
+- Coefficients and feature importances show associations, not causes.
+
+<br>
+
+## References
+
+- Gorishniy, Y., Rubachev, I., Khrulkov, V. and Babenko, A. (2021). Revisiting Deep Learning Models for Tabular Data. NeurIPS 34.
+- Chen, T. and Guestrin, C. (2016). XGBoost: A Scalable Tree Boosting System. KDD.
+- Pedregosa, F. et al. (2011). Scikit-learn: Machine Learning in Python. JMLR 12.
 
 
 
