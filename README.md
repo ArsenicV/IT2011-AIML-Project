@@ -146,7 +146,7 @@ To change voice, change microphone, and other features, see [Additional informat
 
 <br>
 
-## Model selection (justification w charts)
+## Model selection 
 
 Six models were trained on the same preporcessed dataset
 
@@ -182,6 +182,8 @@ Precision, recall and F1 are for the diabetes class.
 
 
 ![FT-Transformer tuning progression](assets/ft_tuning_progress.png)
+
+<br>
 
 ## Ablations
 Trained without preprocessing or balancing, the same model reaches 0.866 accuracy but only about 0.15 recall (ROC-AUC 0.828). Accuracy there mostly reflects the 86% non-diabetic majority, which is why the training set is balanced.
