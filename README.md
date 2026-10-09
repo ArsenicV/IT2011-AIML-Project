@@ -167,14 +167,14 @@ Because the tool is meant for screening, **recall** (the share of real diabetes 
 ## Evaluation 
 ### Test results
 
-| Model | Test set | Accuracy | Precision | Recall | F1 | ROC-AUC |
-|---|---|---|---|---|---|---|
-| Logistic Regression | Real | 0.731 | 0.310 | 0.761 | 0.441 | 0.817 |
-| Random Forest | Real | 0.716 | 0.301 | 0.784 | 0.435 | 0.818 |
-| KNN | Balanced | 0.745 | 0.722 | 0.798 | 0.758 | 0.819 |
-| Decision Tree | Balanced | 0.731 | 0.716 | 0.765 | 0.740 | 0.805 |
-| XGBoost | Balanced | 0.749 | 0.738 | 0.770 | 0.754 | 0.823 |
-| FT-Transformer | Balanced | 0.748 | 0.724 | 0.803 | 0.761 | 0.823 |
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| Logistic Regression | 0.731 | 0.310 | 0.761 | 0.441 | 0.817 |
+| Random Forest | 0.716 | 0.301 | 0.784 | 0.435 | 0.818 |
+| KNN | 0.745 | 0.722 | 0.798 | 0.758 | 0.819 |
+| Decision Tree | 0.731 | 0.716 | 0.765 | 0.740 | 0.805 |
+| XGBoost | 0.749 | 0.738 | 0.770 | 0.754 | 0.823 |
+| FT-Transformer | 0.748 | 0.724 | 0.803 | 0.761 | 0.823 |
 
 Precision, recall and F1 are for the diabetes class.
 
